@@ -97,6 +97,36 @@ app.get('/api/film/:id', (req, res) => {
   });
 });
 
+// Feature 3: Get top 5 actors from store films
+app.get('/api/top-actors', (req, res) => {
+  const query = `
+    SELECT 
+      a.actor_id,
+      a.first_name,
+      a.last_name,
+      COUNT(DISTINCT f.film_id) as film_count,
+      COUNT(DISTINCT r.rental_id) as total_rentals
+    FROM actor a
+    JOIN film_actor fa ON a.actor_id = fa.actor_id
+    JOIN film f ON fa.film_id = f.film_id
+    JOIN inventory i ON f.film_id = i.film_id
+    LEFT JOIN rental r ON i.inventory_id = r.inventory_id
+    GROUP BY a.actor_id, a.first_name, a.last_name
+    ORDER BY total_rentals DESC, film_count DESC
+    LIMIT 5
+  `;
+  
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('Error fetching top actors:', err);
+      res.status(500).json({ error: 'Failed to fetch top actors' });
+    } else {
+      console.log('Top actors query successful, returned', results.length, 'results');
+      res.json(results);
+    }
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
