@@ -280,6 +280,112 @@ app.get('/api/search-films', (req, res) => {
   });
 });
 
+// Feature 7: Get customers for rental
+app.get('/api/customers', (req, res) => {
+  const query = `
+    SELECT 
+      customer_id,
+      first_name,
+      last_name,
+      email,
+      active
+    FROM customer
+    WHERE active = 1
+    ORDER BY last_name, first_name
+  `;
+  
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('Error fetching customers:', err);
+      res.status(500).json({ error: 'Failed to fetch customers' });
+    } else {
+      console.log('Customers query successful, returned', results.length, 'results');
+      res.json(results);
+    }
+  });
+});
+
+// Feature 7: Get available inventory for a film
+app.get('/api/film/:id/inventory', (req, res) => {
+  const filmId = req.params.id;
+  
+  const query = `
+    SELECT 
+      i.inventory_id,
+      i.store_id,
+      s.store_id,
+      s.manager_staff_id,
+      CASE 
+        WHEN r.rental_id IS NOT NULL AND r.return_date IS NULL THEN 'Rented'
+        ELSE 'Available'
+      END as status,
+      r.return_date
+    FROM inventory i
+    JOIN store s ON i.store_id = s.store_id
+    LEFT JOIN rental r ON i.inventory_id = r.inventory_id AND r.return_date IS NULL
+    WHERE i.film_id = ?
+    ORDER BY i.store_id, i.inventory_id
+  `;
+  
+  db.query(query, [filmId], (err, results) => {
+    if (err) {
+      console.error('Error fetching film inventory:', err);
+      res.status(500).json({ error: 'Failed to fetch film inventory' });
+    } else {
+      console.log(`Film inventory query successful for film ${filmId}, returned`, results.length, 'results');
+      res.json(results);
+    }
+  });
+});
+
+// Feature 7: Create a rental
+app.post('/api/rentals', (req, res) => {
+  const { customer_id, inventory_id, staff_id } = req.body;
+  
+  if (!customer_id || !inventory_id || !staff_id) {
+    return res.status(400).json({ error: 'customer_id, inventory_id, and staff_id are required' });
+  }
+  
+  // Check if inventory is available
+  const checkQuery = `
+    SELECT i.inventory_id 
+    FROM inventory i
+    LEFT JOIN rental r ON i.inventory_id = r.inventory_id AND r.return_date IS NULL
+    WHERE i.inventory_id = ? AND r.rental_id IS NULL
+  `;
+  
+  db.query(checkQuery, [inventory_id], (err, results) => {
+    if (err) {
+      console.error('Error checking inventory availability:', err);
+      return res.status(500).json({ error: 'Failed to check inventory availability' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(400).json({ error: 'Inventory item is not available for rental' });
+    }
+    
+    // Create the rental
+    const rentalQuery = `
+      INSERT INTO rental (rental_date, inventory_id, customer_id, staff_id, return_date)
+      VALUES (NOW(), ?, ?, ?, NULL)
+    `;
+    
+    db.query(rentalQuery, [inventory_id, customer_id, staff_id], (err, result) => {
+      if (err) {
+        console.error('Error creating rental:', err);
+        res.status(500).json({ error: 'Failed to create rental' });
+      } else {
+        console.log(`Rental created successfully for customer ${customer_id}, inventory ${inventory_id}`);
+        res.json({ 
+          success: true, 
+          rental_id: result.insertId,
+          message: 'Film rented successfully'
+        });
+      }
+    });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
