@@ -101,18 +101,14 @@ app.get('/api/film/:id', (req, res) => {
 app.get('/api/top-actors', (req, res) => {
   const query = `
     SELECT 
-      a.actor_id,
-      a.first_name,
-      a.last_name,
-      COUNT(DISTINCT f.film_id) as film_count,
-      COUNT(DISTINCT r.rental_id) as total_rentals
+      a.actor_id, 
+      a.first_name, 
+      a.last_name, 
+      COUNT(filmactor.film_id) AS film_count
     FROM actor a
-    JOIN film_actor fa ON a.actor_id = fa.actor_id
-    JOIN film f ON fa.film_id = f.film_id
-    JOIN inventory i ON f.film_id = i.film_id
-    LEFT JOIN rental r ON i.inventory_id = r.inventory_id
+    JOIN film_actor filmactor ON a.actor_id = filmactor.actor_id
     GROUP BY a.actor_id, a.first_name, a.last_name
-    ORDER BY total_rentals DESC, film_count DESC
+    ORDER BY film_count DESC
     LIMIT 5
   `;
   
@@ -123,6 +119,72 @@ app.get('/api/top-actors', (req, res) => {
     } else {
       console.log('Top actors query successful, returned', results.length, 'results');
       res.json(results);
+    }
+  });
+});
+
+// Feature 4: Get detailed actor information and their top 5 rented films
+app.get('/api/actor/:id', (req, res) => {
+  const actorId = req.params.id;
+  
+  const actorQuery = `
+    SELECT 
+      a.actor_id,
+      a.first_name,
+      a.last_name,
+      COUNT(DISTINCT f.film_id) as total_films,
+      COUNT(DISTINCT r.rental_id) as total_rentals
+    FROM actor a
+    JOIN film_actor fa ON a.actor_id = fa.actor_id
+    JOIN film f ON fa.film_id = f.film_id
+    JOIN inventory i ON f.film_id = i.film_id
+    LEFT JOIN rental r ON i.inventory_id = r.inventory_id
+    WHERE a.actor_id = ?
+    GROUP BY a.actor_id, a.first_name, a.last_name
+  `;
+  
+  const topFilmsQuery = `
+    SELECT 
+      f.film_id,
+      f.title,
+      f.description,
+      f.release_year,
+      f.rating,
+      f.rental_rate,
+      COUNT(r.rental_id) as rental_count
+    FROM actor a
+    JOIN film_actor fa ON a.actor_id = fa.actor_id
+    JOIN film f ON fa.film_id = f.film_id
+    JOIN inventory i ON f.film_id = i.film_id
+    JOIN rental r ON i.inventory_id = r.inventory_id
+    WHERE a.actor_id = ?
+    GROUP BY f.film_id, f.title, f.description, f.release_year, f.rating, f.rental_rate
+    ORDER BY rental_count DESC
+    LIMIT 5
+  `;
+  
+  // Get actor details
+  db.query(actorQuery, [actorId], (err, actorResults) => {
+    if (err) {
+      console.error('Error fetching actor details:', err);
+      res.status(500).json({ error: 'Failed to fetch actor details' });
+    } else if (actorResults.length === 0) {
+      res.status(404).json({ error: 'Actor not found' });
+    } else {
+      const actor = actorResults[0];
+      
+      // Get actor's top 5 rented films
+      db.query(topFilmsQuery, [actorId], (err, filmsResults) => {
+        if (err) {
+          console.error('Error fetching actor films:', err);
+          res.status(500).json({ error: 'Failed to fetch actor films' });
+        } else {
+          res.json({
+            actor: actor,
+            topFilms: filmsResults
+          });
+        }
+      });
     }
   });
 });
