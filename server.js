@@ -189,6 +189,97 @@ app.get('/api/actor/:id', (req, res) => {
   });
 });
 
+// Feature 5: Search films by name, actor, or genre
+app.get('/api/search-films', (req, res) => {
+  const { query, type } = req.query;
+  
+  if (!query || !type) {
+    return res.status(400).json({ error: 'Query and type parameters are required' });
+  }
+  
+  let searchQuery = '';
+  let searchParams = [];
+  
+  switch (type) {
+    case 'title':
+      searchQuery = `
+        SELECT DISTINCT
+          f.film_id,
+          f.title,
+          f.description,
+          f.release_year,
+          f.rating,
+          f.rental_rate,
+          COUNT(r.rental_id) as rental_count
+        FROM film f
+        LEFT JOIN inventory i ON f.film_id = i.film_id
+        LEFT JOIN rental r ON i.inventory_id = r.inventory_id
+        WHERE f.title LIKE ?
+        GROUP BY f.film_id, f.title, f.description, f.release_year, f.rating, f.rental_rate
+        ORDER BY f.title
+      `;
+      searchParams = [`%${query}%`];
+      break;
+      
+    case 'actor':
+      searchQuery = `
+        SELECT DISTINCT
+          f.film_id,
+          f.title,
+          f.description,
+          f.release_year,
+          f.rating,
+          f.rental_rate,
+          COUNT(r.rental_id) as rental_count
+        FROM film f
+        JOIN film_actor fa ON f.film_id = fa.film_id
+        JOIN actor a ON fa.actor_id = a.actor_id
+        LEFT JOIN inventory i ON f.film_id = i.film_id
+        LEFT JOIN rental r ON i.inventory_id = r.inventory_id
+        WHERE CONCAT(a.first_name, ' ', a.last_name) LIKE ?
+        GROUP BY f.film_id, f.title, f.description, f.release_year, f.rating, f.rental_rate
+        ORDER BY f.title
+      `;
+      searchParams = [`%${query}%`];
+      break;
+      
+    case 'genre':
+      searchQuery = `
+        SELECT DISTINCT
+          f.film_id,
+          f.title,
+          f.description,
+          f.release_year,
+          f.rating,
+          f.rental_rate,
+          COUNT(r.rental_id) as rental_count
+        FROM film f
+        JOIN film_category fc ON f.film_id = fc.film_id
+        JOIN category c ON fc.category_id = c.category_id
+        LEFT JOIN inventory i ON f.film_id = i.film_id
+        LEFT JOIN rental r ON i.inventory_id = r.inventory_id
+        WHERE c.name LIKE ?
+        GROUP BY f.film_id, f.title, f.description, f.release_year, f.rating, f.rental_rate
+        ORDER BY f.title
+      `;
+      searchParams = [`%${query}%`];
+      break;
+      
+    default:
+      return res.status(400).json({ error: 'Invalid search type. Use: title, actor, or genre' });
+  }
+  
+  db.query(searchQuery, searchParams, (err, results) => {
+    if (err) {
+      console.error('Error searching films:', err);
+      res.status(500).json({ error: 'Failed to search films' });
+    } else {
+      console.log(`Film search (${type}: "${query}") successful, returned`, results.length, 'results');
+      res.json(results);
+    }
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
