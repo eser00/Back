@@ -520,6 +520,66 @@ app.post('/api/customers', (req, res) => {
   });
 });
 
+// Update customer
+app.put('/api/customers/:id', (req, res) => {
+  const customerId = req.params.id;
+  const { first_name, last_name, email, store_id } = req.body;
+  
+  if (!first_name || !last_name || !email) {
+    return res.status(400).json({ error: 'First name, last name, and email are required' });
+  }
+  
+  // Check if customer exists
+  const checkCustomerQuery = 'SELECT customer_id FROM customer WHERE customer_id = ?';
+  
+  db.query(checkCustomerQuery, [customerId], (err, results) => {
+    if (err) {
+      console.error('Error checking customer:', err);
+      return res.status(500).json({ error: 'Failed to check customer' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    
+    // Check if email already exists for another customer
+    const checkEmailQuery = 'SELECT customer_id FROM customer WHERE email = ? AND customer_id != ?';
+    
+    db.query(checkEmailQuery, [email, customerId], (err, emailResults) => {
+      if (err) {
+        console.error('Error checking email:', err);
+        return res.status(500).json({ error: 'Failed to check email' });
+      }
+      
+      if (emailResults.length > 0) {
+        return res.status(400).json({ error: 'Email already exists for another customer' });
+      }
+      
+      // Update customer
+      const updateQuery = `
+        UPDATE customer 
+        SET first_name = ?, last_name = ?, email = ?, store_id = ?, last_update = NOW()
+        WHERE customer_id = ?
+      `;
+      
+      const values = [first_name, last_name, email, store_id || 1, customerId];
+      
+      db.query(updateQuery, values, (err, result) => {
+        if (err) {
+          console.error('Error updating customer:', err);
+          return res.status(500).json({ error: 'Failed to update customer' });
+        }
+        
+        console.log(`Customer updated successfully: ${first_name} ${last_name} (ID: ${customerId})`);
+        res.json({ 
+          success: true, 
+          message: 'Customer updated successfully'
+        });
+      });
+    });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
