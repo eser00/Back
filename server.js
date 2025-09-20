@@ -475,6 +475,51 @@ app.get('/api/customers', (req, res) => {
   });
 });
 
+// Add new customer
+app.post('/api/customers', (req, res) => {
+  const { first_name, last_name, email, store_id } = req.body;
+  
+  if (!first_name || !last_name || !email) {
+    return res.status(400).json({ error: 'First name, last name, and email are required' });
+  }
+  
+  // Check if email already exists
+  const checkEmailQuery = 'SELECT customer_id FROM customer WHERE email = ?';
+  
+  db.query(checkEmailQuery, [email], (err, results) => {
+    if (err) {
+      console.error('Error checking email:', err);
+      return res.status(500).json({ error: 'Failed to check email' });
+    }
+    
+    if (results.length > 0) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+    
+    // Create new customer
+    const insertQuery = `
+      INSERT INTO customer (store_id, first_name, last_name, email, address_id, active, create_date, last_update)
+      VALUES (?, ?, ?, ?, 1, 1, NOW(), NOW())
+    `;
+    
+    const values = [store_id || 1, first_name, last_name, email];
+    
+    db.query(insertQuery, values, (err, result) => {
+      if (err) {
+        console.error('Error creating customer:', err);
+        return res.status(500).json({ error: 'Failed to create customer' });
+      }
+      
+      console.log(`Customer created successfully: ${first_name} ${last_name} (ID: ${result.insertId})`);
+      res.json({ 
+        success: true, 
+        customer_id: result.insertId,
+        message: 'Customer created successfully'
+      });
+    });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
