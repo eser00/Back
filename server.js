@@ -386,16 +386,44 @@ app.post('/api/rentals', (req, res) => {
   });
 });
 
-// Get customers with pagination
+// Get customers with pagination and search
 app.get('/api/customers', (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
+  const search = req.query.search || '';
+  const type = req.query.type || 'name';
   
-  // Get total count
-  const countQuery = 'SELECT COUNT(*) as total FROM customer WHERE active = 1';
+  // Build search conditions
+  let searchCondition = 'WHERE active = 1';
+  let searchParams = [];
   
-  db.query(countQuery, (err, countResult) => {
+  if (search.trim()) {
+    switch (type) {
+      case 'id':
+        searchCondition += ' AND customer_id = ?';
+        searchParams.push(parseInt(search.trim()));
+        break;
+      case 'first_name':
+        searchCondition += ' AND first_name LIKE ?';
+        searchParams.push(`%${search.trim()}%`);
+        break;
+      case 'last_name':
+        searchCondition += ' AND last_name LIKE ?';
+        searchParams.push(`%${search.trim()}%`);
+        break;
+      case 'name':
+      default:
+        searchCondition += ' AND (first_name LIKE ? OR last_name LIKE ?)';
+        searchParams.push(`%${search.trim()}%`, `%${search.trim()}%`);
+        break;
+    }
+  }
+  
+  // Get total count with search
+  const countQuery = `SELECT COUNT(*) as total FROM customer ${searchCondition}`;
+  
+  db.query(countQuery, searchParams, (err, countResult) => {
     if (err) {
       console.error('Error getting customer count:', err);
       return res.status(500).json({ error: 'Failed to get customer count' });
@@ -404,7 +432,7 @@ app.get('/api/customers', (req, res) => {
     const total = countResult[0].total;
     const totalPages = Math.ceil(total / limit);
     
-    // Get customers with pagination
+    // Get customers with pagination and search
     const customersQuery = `
       SELECT 
         customer_id,
@@ -417,16 +445,20 @@ app.get('/api/customers', (req, res) => {
         create_date,
         last_update
       FROM customer 
-      WHERE active = 1
+      ${searchCondition}
       ORDER BY last_name, first_name
       LIMIT ? OFFSET ?
     `;
     
-    db.query(customersQuery, [limit, offset], (err, result) => {
+    const queryParams = [...searchParams, limit, offset];
+    
+    db.query(customersQuery, queryParams, (err, result) => {
       if (err) {
         console.error('Error getting customers:', err);
         return res.status(500).json({ error: 'Failed to get customers' });
       }
+      
+      console.log(`Customer search (${type}: "${search}") successful, returned`, result.length, 'results');
       
       res.json({
         customers: result,
