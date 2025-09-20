@@ -280,8 +280,8 @@ app.get('/api/search-films', (req, res) => {
   });
 });
 
-// Feature 7: Get customers for rental
-app.get('/api/customers', (req, res) => {
+// Feature 7: Get customers for rental (simple list for rental modal)
+app.get('/api/customers-simple', (req, res) => {
   const query = `
     SELECT 
       customer_id,
@@ -382,6 +382,63 @@ app.post('/api/rentals', (req, res) => {
           message: 'Film rented successfully'
         });
       }
+    });
+  });
+});
+
+// Get customers with pagination
+app.get('/api/customers', (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const offset = (page - 1) * limit;
+  
+  // Get total count
+  const countQuery = 'SELECT COUNT(*) as total FROM customer WHERE active = 1';
+  
+  db.query(countQuery, (err, countResult) => {
+    if (err) {
+      console.error('Error getting customer count:', err);
+      return res.status(500).json({ error: 'Failed to get customer count' });
+    }
+    
+    const total = countResult[0].total;
+    const totalPages = Math.ceil(total / limit);
+    
+    // Get customers with pagination
+    const customersQuery = `
+      SELECT 
+        customer_id,
+        store_id,
+        first_name,
+        last_name,
+        email,
+        address_id,
+        active,
+        create_date,
+        last_update
+      FROM customer 
+      WHERE active = 1
+      ORDER BY last_name, first_name
+      LIMIT ? OFFSET ?
+    `;
+    
+    db.query(customersQuery, [limit, offset], (err, result) => {
+      if (err) {
+        console.error('Error getting customers:', err);
+        return res.status(500).json({ error: 'Failed to get customers' });
+      }
+      
+      res.json({
+        customers: result,
+        pagination: {
+          currentPage: page,
+          totalPages: totalPages,
+          totalCustomers: total,
+          limit: limit,
+          hasNext: page < totalPages,
+          hasPrev: page > 1
+        }
+      });
     });
   });
 });
