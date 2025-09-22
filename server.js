@@ -580,6 +580,66 @@ app.put('/api/customers/:id', (req, res) => {
   });
 });
 
+// Delete customer (soft delete - set active = 0)
+app.delete('/api/customers/:id', (req, res) => {
+  const customerId = req.params.id;
+  
+  // Check if customer exists
+  const checkCustomerQuery = 'SELECT customer_id, first_name, last_name FROM customer WHERE customer_id = ? AND active = 1';
+  
+  db.query(checkCustomerQuery, [customerId], (err, results) => {
+    if (err) {
+      console.error('Error checking customer:', err);
+      return res.status(500).json({ error: 'Failed to check customer' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Customer not found or already deleted' });
+    }
+    
+    const customer = results[0];
+    
+    // Check if customer has any active rentals
+    const checkRentalsQuery = `
+      SELECT COUNT(*) as active_rentals 
+      FROM rental r 
+      JOIN inventory i ON r.inventory_id = i.inventory_id 
+      WHERE r.customer_id = ? AND r.return_date IS NULL
+    `;
+    
+    db.query(checkRentalsQuery, [customerId], (err, rentalResults) => {
+      if (err) {
+        console.error('Error checking rentals:', err);
+        return res.status(500).json({ error: 'Failed to check customer rentals' });
+      }
+      
+      const activeRentals = rentalResults[0].active_rentals;
+      
+      if (activeRentals > 0) {
+        return res.status(400).json({ 
+          error: `Cannot delete customer. They have ${activeRentals} active rental(s). Please ensure all rentals are returned first.` 
+        });
+      }
+      
+      // Soft delete customer (set active = 0)
+      const deleteQuery = 'UPDATE customer SET active = 0, last_update = NOW() WHERE customer_id = ?';
+      
+      db.query(deleteQuery, [customerId], (err, result) => {
+        if (err) {
+          console.error('Error deleting customer:', err);
+          return res.status(500).json({ error: 'Failed to delete customer' });
+        }
+        
+        console.log(`Customer deleted successfully: ${customer.first_name} ${customer.last_name} (ID: ${customerId})`);
+        res.json({ 
+          success: true, 
+          message: 'Customer deleted successfully'
+        });
+      });
+    });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
