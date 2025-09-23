@@ -698,6 +698,7 @@ app.get('/api/customers/:id/rentals', (req, res) => {
   
   const query = `
     SELECT 
+      r.rental_id,
       f.title as film_title,
       r.rental_date,
       r.return_date,
@@ -721,6 +722,67 @@ app.get('/api/customers/:id/rentals', (req, res) => {
     
     console.log(`Customer rental history fetched successfully for ID: ${customerId}, ${results.length} rentals found`);
     res.json(results);
+  });
+});
+
+// Return rental
+app.put('/api/rentals/:rentalId/return', (req, res) => {
+  const rentalId = req.params.rentalId;
+  
+  console.log(`Attempting to return rental ID: ${rentalId}`);
+  
+  // Check if rental exists and is active
+  const checkQuery = `
+    SELECT r.rental_id, r.return_date, f.title as film_title, c.first_name, c.last_name
+    FROM rental r
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    JOIN customer c ON r.customer_id = c.customer_id
+    WHERE r.rental_id = ?
+  `;
+  
+  db.query(checkQuery, [rentalId], (err, results) => {
+    if (err) {
+      console.error('Error checking rental:', err);
+      return res.status(500).json({ error: 'Failed to check rental' });
+    }
+    
+    console.log(`Rental check results for ID ${rentalId}:`, results);
+    
+    if (results.length === 0) {
+      console.log(`Rental not found for ID: ${rentalId}`);
+      return res.status(404).json({ error: 'Rental not found' });
+    }
+    
+    const rental = results[0];
+    
+    if (rental.return_date !== null) {
+      console.log(`Rental already returned for ID: ${rentalId}`);
+      return res.status(400).json({ error: 'Rental has already been returned' });
+    }
+    
+    // Update rental with return date
+    const updateQuery = `
+      UPDATE rental 
+      SET return_date = NOW(), last_update = NOW()
+      WHERE rental_id = ?
+    `;
+    
+    db.query(updateQuery, [rentalId], (err, result) => {
+      if (err) {
+        console.error('Error returning rental:', err);
+        return res.status(500).json({ error: 'Failed to return rental' });
+      }
+      
+      console.log(`Rental returned successfully: ${rental.film_title} by ${rental.first_name} ${rental.last_name} (Rental ID: ${rentalId})`);
+      res.json({ 
+        success: true, 
+        message: 'Rental returned successfully',
+        rental_id: rentalId,
+        film_title: rental.film_title,
+        customer_name: `${rental.first_name} ${rental.last_name}`
+      });
+    });
   });
 });
 
