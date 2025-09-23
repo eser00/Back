@@ -640,6 +640,90 @@ app.delete('/api/customers/:id', (req, res) => {
   });
 });
 
+// Get detailed customer information
+app.get('/api/customers/:id/details', (req, res) => {
+  const customerId = req.params.id;
+  
+  const query = `
+    SELECT 
+      c.customer_id,
+      c.store_id,
+      c.first_name,
+      c.last_name,
+      c.email,
+      c.active,
+      c.create_date,
+      c.last_update,
+      COUNT(DISTINCT r.rental_id) as total_rentals,
+      COUNT(DISTINCT CASE WHEN r.return_date IS NULL THEN r.rental_id END) as active_rentals,
+      COALESCE(SUM(f.rental_rate), 0) as total_spent,
+      (
+        SELECT c2.name 
+        FROM category c2
+        JOIN film_category fc2 ON c2.category_id = fc2.category_id
+        JOIN film f2 ON fc2.film_id = f2.film_id
+        JOIN inventory i2 ON f2.film_id = i2.film_id
+        JOIN rental r2 ON i2.inventory_id = r2.inventory_id
+        WHERE r2.customer_id = c.customer_id
+        GROUP BY c2.name
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+      ) as favorite_genre
+    FROM customer c
+    LEFT JOIN rental r ON c.customer_id = r.customer_id
+    LEFT JOIN inventory i ON r.inventory_id = i.inventory_id
+    LEFT JOIN film f ON i.film_id = f.film_id
+    WHERE c.customer_id = ?
+    GROUP BY c.customer_id, c.store_id, c.first_name, c.last_name, c.email, c.active, c.create_date, c.last_update
+  `;
+  
+  db.query(query, [customerId], (err, results) => {
+    if (err) {
+      console.error('Error fetching customer details:', err);
+      return res.status(500).json({ error: 'Failed to fetch customer details' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    
+    console.log(`Customer details fetched successfully for ID: ${customerId}`);
+    res.json(results[0]);
+  });
+});
+
+// Get customer rental history
+app.get('/api/customers/:id/rentals', (req, res) => {
+  const customerId = req.params.id;
+  
+  const query = `
+    SELECT 
+      f.title as film_title,
+      r.rental_date,
+      r.return_date,
+      f.rental_rate,
+      CASE 
+        WHEN r.return_date IS NULL THEN 'Active'
+        ELSE 'Returned'
+      END as status
+    FROM rental r
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    WHERE r.customer_id = ?
+    ORDER BY r.rental_date DESC
+  `;
+  
+  db.query(query, [customerId], (err, results) => {
+    if (err) {
+      console.error('Error fetching customer rentals:', err);
+      return res.status(500).json({ error: 'Failed to fetch customer rentals' });
+    }
+    
+    console.log(`Customer rental history fetched successfully for ID: ${customerId}, ${results.length} rentals found`);
+    res.json(results);
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
